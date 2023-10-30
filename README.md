@@ -4,71 +4,81 @@ This code is a fork of Andrej Karpathy's makemore project, aimed at fine-tuning 
 
 ## Intent
 
-Initially, the goal was to apply makemore to various datasets other than names.txt.
+Initially, the goal was to apply makemore to various datasets other than names.txt. Larger and smaller datasets were tried including ones that have a large corpus of English words, numbers for addition, square roots and a large dataset of quotes that is close to 10M in size and has lines up to 505 characters in length. 
+Also using scripts and the modifications to makemore.py it is possible to do a grid search for optimimum hyperparameters including the use of a contraint on model size. Output from makemore.py to a CSV file along with hexidecimal hash values for tagging assists with making the tuning process easy.
 
 ## Modifications
 
-The primary modifications to makemore include an option for early stopping. When the code runs and the loss ceases to decrease further, it checks every 500 steps where the models usually save. If the loss hasn't decreased, a watchdog count increases. The command-line parameter for early stopping determines how many attempts to wait for the loss to decrease before quitting. For example, if set to one, it goes through that iteration once and then stops; if set to ten, it goes through ten times. This is Change #1.
+- The primary modifications to makemore include an option for early stopping. When the code runs and the loss ceases to decrease further, it checks every 500 steps where the models usually save. If the loss hasn't decreased, a watchdog count increases. The command-line parameter for early stopping determines how many attempts to wait for the loss to decrease before quitting. For example, if set to one, it goes through that iteration once and then stops; if set to ten, it goes through ten times. This is Change #1.
 
-Another modification involves setting a target threshold for loss. While determining the optimal batch size, I observed how the code's runtime changes with different batch sizes. By varying the batch size, makemore can reach a lower loss more quickly or slowly. The idea is to run a script, set a target, and then identify which batch sizes, fed as command-line arguments to makemore, produce the shortest run times.
+- Another modification involves setting a target threshold for loss. While determining the optimal batch size, I observed how the code's runtime changes with different batch sizes. By varying the batch size, makemore can reach a lower loss more quickly or slowly. The idea is to run a script, set a target, and then identify which batch sizes, fed as command-line arguments to makemore, produce the shortest run times.
 
-Also a hex tag for easy seraching when using a script to grid search hyperparameters
+- Also a hex tag for easy seraching when using a script to grid search hyperparameters
 
-Finally, output a CSV file with hex tag,step #, train and test loss...
+- Output a CSV file with hex tag,step #, train and test loss...
+```
+  `sort -nk4 -t, -r makemore_log.csv | tail`
+  0x324fef,500,0.47,0.501`
+  0x119fbc,500,0.469,0.5`
+  0x5ba887,500,0.469,0.499`
+  0x3254ff,500,0.467,0.499`
+  0xa5510a,500,0.468,0.498`
+  0xfca52,500,0.469,0.497`
+  0xbf86d,500,0.455,0.496`
+  0xa5362b,500,0.455,0.496`
+  0x9d98df,500,0.451,0.495`
+  0x78a5b6,500,0.451,0.495`
+```
+- Experiment with smaller (1/10X) and larger datasets (25X) than names.txt Also a 10M extra large dataset of quotes.
+- Search for performance due to initialization lottery by changing seed values.
 
-sort -nk4 -t, -r makemore_log.csv | tail
-0x324fef,500,0.47,0.501
-0x119fbc,500,0.469,0.5
-0x5ba887,500,0.469,0.499
-0x3254ff,500,0.467,0.499
-0xa5510a,500,0.468,0.498
-0xfca52,500,0.469,0.497
-0xbf86d,500,0.455,0.496
-0xa5362b,500,0.455,0.496
-0x9d98df,500,0.451,0.495
-0x78a5b6,500,0.451,0.495
+- Add logging of tag, step #, train and validation loss to CSV file for plotting and using 	the file for search on lowest test loss for grid search via sort and using the hex tag to 
+	reference the hyperparameters used for training.
+ 
+- Bump the amount of the dataset to be used for validation at 10% to 100000 instead   of 1000. This will resut in validation set being 10% for larger datasets. This was done late and is not reflected in some of the example runs shown in this document
+
+- Added a maximum parameters option to makemore that will exit the code is the model size is above the amount entered. This option allows for a grid search for the best hyperparameters with a constraint on model size. Without this larger models with more layers and larger embedding values always win the grid search.
 
 ## Scripts
 
-There are several scripts, one for tuning. This script varies the hyperparameters using a Bash shell script and passes the parameters as command-line arguments to makemore. The intention was not to alter the makemore code significantly but to run it externally using batch shell scripts. The concept of tagging is important here. Specific outputs produced by makemore are tagged and can be redirected to a file, including the dictionary of hyperparameters. The best loss is also tagged, which is saved after every 500 steps if it's better than previous validation losses. This tagging helps when running multiple iterations of makemore and searching for early stopping or the best loss. Tags are random hexadecimal numbers, usually 24 bits to minimize collision probability.
+There are several scripts for tuning and running training with preset parameters. They are located in scripts folder. The tuning script varies the hyperparameters using a Bash shell script and passes the parameters as command-line arguments to makemore. The intention was not to alter the makemore code significantly but to run it externally using batch shell scripts. The concept of tagging is important here. Specific outputs produced by makemore are tagged and can be redirected to a file, including the dictionary of hyperparameters. The best loss is also tagged, which is saved after every 500 steps if it's better than previous validation losses. This tagging helps when running multiple iterations of makemore and searching for early stopping or the best loss. Tags are random hexadecimal numbers, usually 24 bits to minimize collision probability.
 Others mainly are for running the makemore.py with specific paramters, input files and output directories.
+The scripts are to be run from a directory which has makemore.py and if needed the dataset as well. They are put into scripts folder for convience but do not have to be run from it. It is possible to move or sylink or mod the scripts to run from the location that makemore.py is located.
 
 ## Initialization Lottery
 
-Another experiment involved what I call an "initialization lottery." I generated random seeds using a shell script to run makemore with different seed values. This experiment revealed variations in loss performance over time, suggesting that certain seed values are luckier than others. All this information is documented here.
-
-## Seed Runs
+Another experiment involved what I call an "initialization lottery." I generated random seeds using a shell script ( initialization-lottery-test.sh ) to run makemore with different seed values. This experiment revealed variations in loss performance over time, suggesting that certain seed values are luckier than others. All this information is documented here. in the verbose readme.pdf
 
 ### Less data and more data fed in
 
 I also experimented with different datasets. One example was generating addition examples using a Python script called `addition.py`. This script creates 10,000 examples of addition problems, restricting itself to numbers from zero to nine without using operators. The resulting dataset consists of input numbers and their corresponding sums. This dataset is smaller than `names.txt` and can lead to overfitting quickly.
-
-821294
-033437
-8812100
-064248
-393372
-
+```
+ 821294
+ 033437
+ 8812100
+ 064248
+ 393372
+```
 ### Sqrt
 
 Another experiment involved calculating square roots. A Python helper function generates square root data for numbers from 1 to 1000. The output includes the integer number, a colon, a space, and the square root to four decimal places. Makemore, when trained on this data, performs well and can generalize to unseen examples.
-
-978: 31.3169
-970: 31.149:
-682: 26.5543
-447: 21.2038
-682: 26.5543
-
+```
+ 978: 31.3169
+ 970: 31.149:
+ 682: 26.5543
+ 447: 21.2038
+ 682: 26.5543
+```
 ### English Words Dataset (about 10x larger than names)
 
 I also experimented with a significantly larger dataset—approximately ten times larger than `names.txt`. I combined three sources of English words, resulting in a larger dataset. Training on this dataset yields interesting English-like words and demonstrates longer periods of generating new output before memorizing. It's a fun dataset to play with.
-
-comprecise
-arrogenry
-ckikeke
-revotial
-sinharmic
-
+```
+ comprecise
+ arrogenry
+ ckikeke
+ revotial
+ sinharmic
+```
 ### Final 10M Quotes File
 
 Lastly, there's a 10-megabyte file of quotes with sentences that contain punctuation, capitalization, and a variety of characters. This serves as a challenging test for makemore. Running this dataset may consume more memory and time compared to smaller datasets, and it's an interesting experiment to see how well makemore can handle it.
@@ -85,11 +95,12 @@ Plus a few sidequests.
 
 ## Large README
 There is a large verbose-readme.pdf for much more details.
+https://github.com/erickclasen/makemore/blob/master/verbose-readme.pdf
 
 ## Acknowledgements
-Andrej Karpathy ( https://github.com/karpathy )for paving the way to the frontier of AI with good tutorials and code to learn from.
-Gwern Branwen ( https://gwern.net/ ) and his TWDNE Project ( https://gwern.net/twdne ), which helped me get motivated again with ML projects, especially the quotes training as a warmup for something bigger in the future.
-Lex Fridman ( https://lexfridman.com/ )for educational podcasts that keep me in the loop on AI and more even when I am 'not feelin it' with code.
+- Andrej Karpathy ( https://github.com/karpathy ) for paving the way to the frontier of AI with good tutorials and code to learn from.
+- Gwern Branwen ( https://gwern.net/ ) and his TWDNE Project ( https://gwern.net/twdne ), which helped me get motivated again with ML projects, especially the quotes training as a warmup for something I keep thinking about as a future project.
+- Lex Fridman ( https://lexfridman.com/ ) for educational podcasts that keep me in the loop on AI and more , especially when I am 'not feelin it' with writing code.
 
 # Original README ...
 # makemore
