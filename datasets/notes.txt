@@ -1,0 +1,2 @@
+This directory contains additional datasets that were created and tried.
+  See the verbose readme file for more details.
