@@ -17,6 +17,9 @@ import sys
 import time
 import math
 import argparse
+import random
+import csv
+
 from dataclasses import dataclass
 from typing import List
 
@@ -559,7 +562,7 @@ def create_datasets(input_file):
     print(''.join(chars))
 
     # partition the input data into a training and the test set
-    test_set_size = min(1000, int(len(words) * 0.1)) # 10% of the training set, or up to 1000 examples
+    test_set_size = min(100000, int(len(words) * 0.1)) # 10% of the training set, or up to 1000 examples
     rp = torch.randperm(len(words)).tolist()
     train_words = [words[i] for i in rp[:-test_set_size]]
     test_words = [words[i] for i in rp[-test_set_size:]]
@@ -590,6 +593,23 @@ class InfiniteDataLoader:
             batch = next(self.data_iter)
         return batch
 
+# Helper function to log the losses to a CSV file for evaulation of learning curves.
+def log_to_csv(filename, variable_list):
+    try:
+        with open(filename, 'a', newline='') as csv_file:
+            csv_writer = csv.writer(csv_file)
+            # Write the header with variable names
+            #header = [f'Variable_{i + 1}' for i in range(len(variable_list))]
+            #csv_writer.writerow(header)
+            
+            # Write the variable values
+            csv_writer.writerow(variable_list)
+            
+        #print(f'Variables logged to {filename}')
+    except Exception as e:
+        print(f'Error: {str(e)}')
+
+
 # -----------------------------------------------------------------------------
 if __name__ == '__main__':
 
@@ -616,8 +636,20 @@ if __name__ == '__main__':
     parser.add_argument('--batch-size', '-b', type=int, default=32, help="batch size during optimization")
     parser.add_argument('--learning-rate', '-l', type=float, default=5e-4, help="learning rate")
     parser.add_argument('--weight-decay', '-w', type=float, default=0.01, help="weight decay")
+    parser.add_argument('--lt-thr', '-t', type=float, default=1e10, help='Loss target, stop when loss reaches the input value target threshold.')
+    parser.add_argument('--early-stop', '-e', type=int, default=1e10, help="early stopping filter")
+    parser.add_argument('--max-params', '-m', type=int, default=1e10, help="Do not run if parameters of the model are larger than --max-params")
+
     args = parser.parse_args()
-    print(vars(args))
+
+    # Create a random hexadecimal number 24 bits to tag the run.
+    # This helps during optimization to correlate the arguments with the loss
+    # when searching through a file. Similar to a hash to access a record. 
+    # 24 bits should be a low enough collision risk for this code.
+    rand_hex_tag = hex(random.randint(0,2**24))
+
+    # This will print and 'tag' the parameters used for the run.
+    print(rand_hex_tag,vars(args))
 
     # system inits
     torch.manual_seed(args.seed)
@@ -650,7 +682,19 @@ if __name__ == '__main__':
     else:
         raise ValueError(f'model type {args.type} is not recognized')
     model.to(args.device)
-    print(f"model #params: {sum(p.numel() for p in model.parameters())}")
+
+    # Calculate once use the var twice.
+    num_modelparams = sum(p.numel() for p in model.parameters())
+
+    print(f"model num. params: {num_modelparams}")
+
+    # If the parameters are larger than the max params, quit. For grid serach hyper parameter
+    # optimization using a contraint for model size. i.e. Find best parameter combination for a 
+    # specified model size.
+    if num_modelparams > args.max_params:
+        print("Model size larger than size contraint, quitting.")
+        sys.exit()
+
     if args.resume or args.sample_only: # note: if we sample-only then we also assume we are resuming
         print("resuming from existing model in the workdir")
         model.load_state_dict(torch.load(os.path.join(args.work_dir, 'model.pt')))
@@ -701,12 +745,24 @@ if __name__ == '__main__':
             writer.add_scalar("Loss/test", test_loss, step)
             writer.flush()
             print(f"step {step} train loss: {train_loss} test loss: {test_loss}")
+
+            # Log the steps and losses to csv. Round them to reasonable values.
+            variables = [rand_hex_tag,step,round(train_loss,3),round(test_loss,3)]
+            log_to_csv('makemore_log.csv', variables)
+
             # save the model to disk if it has improved
             if best_loss is None or test_loss < best_loss:
                 out_path = os.path.join(args.work_dir, "model.pt")
-                print(f"test loss {test_loss} is the best so far, saving model to {out_path}")
+                print(f"test loss {test_loss} is the best so far, saving model to {out_path} tag: {rand_hex_tag}")
                 torch.save(model.state_dict(), out_path)
                 best_loss = test_loss
+                early_stopping_filter = 0
+            elif args.early_stop > 0:  # Apply early stopping
+                #print("xxxxx",args.early_stop,early_stopping_filter)
+                early_stopping_filter += 1
+                if early_stopping_filter > args.early_stop:
+                        print(f"{best_loss} is best loss at step {step}, Early Stopping Applied. tag: {rand_hex_tag}")
+                        sys.exit()
 
         # sample from the model
         if step > 0 and step % 200 == 0:
@@ -714,6 +770,6 @@ if __name__ == '__main__':
 
         step += 1
         # termination conditions
-        if args.max_steps >= 0 and step >= args.max_steps:
+        if (args.max_steps >= 0 and step >= args.max_steps or (best_loss != None and best_loss < args.lt_thr and args.lt_thr != 1e10)):
             break
 
