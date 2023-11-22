@@ -95,6 +95,10 @@ Plus a few sidequests.
 
 ## Large README
 There is a large verbose-readme.pdf for much more details.
+This version will open right up in a browser:
+http://erick.heart-centered-living.org/wp-content/uploads/2023/11/verbose-readme.pdf
+
+This one is in the repo, requires downloading to view peoperly:
 https://github.com/erickclasen/makemore/blob/master/verbose-readme.pdf
 
 ## Acknowledgements
